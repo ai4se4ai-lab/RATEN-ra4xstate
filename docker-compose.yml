@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  raten:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: raten-xstate:latest
+    container_name: raten-xstate-container
+    volumes:
+      # Mount source for development (optional)
+      - ./packages/xstate-raten:/app/packages/xstate-raten
+    working_dir: /app/packages/xstate-raten
+    command: sh -c "echo '=== RATEN Package Status ===' && node -e \"const pkg = require('./package.json'); console.log('Package:', pkg.name); console.log('Version:', pkg.version); console.log('Description:', pkg.description);\" && echo '' && echo '=== Testing RATEN Import ===' && node -e \"const raten = require('./lib/index.js'); console.log('RATEN exports:', Object.keys(raten).join(', '));\" && echo '' && echo '=== Running Tests ===' && yarn test && echo '' && echo '✓ Container is ready!'"
+    environment:
+      - NODE_ENV=production
+

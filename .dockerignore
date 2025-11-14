@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs (will be built in Docker)
+**/lib
+**/es
+**/dist
+**/coverage
+**/*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+docs
+*.md
+!README.md
+
+# Examples (optional, can be included if needed)
+# examples
+
+# Test files (optional)
+# **/__tests__
+# **/*.test.ts
+# **/*.test.js
+
+# Lock files (we'll use yarn.lock)
+package-lock.json
+pnpm-lock.yaml
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Misc
+*.log
+.env
+.env.local
+
