@@ -3,8 +3,11 @@ node_modules
 **/node_modules
 
 # Build outputs (will be built in Docker)
+# But allow xstate-raten pre-built files
 **/lib
 **/es
+!packages/xstate-raten/lib
+!packages/xstate-raten/es
 **/dist
 **/coverage
 **/*.tsbuildinfo
