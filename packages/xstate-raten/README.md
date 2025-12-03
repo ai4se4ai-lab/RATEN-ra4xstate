@@ -52,94 +52,95 @@ npm install @xstate/raten xstate
 ### Basic Robustness Analysis
 
 ```typescript
-import { RATEN } from '@xstate/raten';
-import { createMachine } from 'xstate';
+import { RATEN } from "@xstate/raten";
+import { createMachine } from "xstate";
 
 // Define your behavioral model (BSM)
 const behavioralModel = createMachine({
-  id: 'mySystem',
-  initial: 'idle',
+  id: "mySystem",
+  initial: "idle",
   states: {
     idle: {
-      on: { START: 'active' }
+      on: { START: "active" },
     },
     active: {
-      on: { STOP: 'idle' }
-    }
-  }
+      on: { STOP: "idle" },
+    },
+  },
 });
 
 // Define your property model (PSM)
 const propertyModel = createMachine({
-  id: 'requirements',
-  initial: 'good',
+  id: "requirements",
+  initial: "good",
   states: {
     good: {
-      tags: ['Good'],
+      tags: ["Good"],
       on: {
-        START: { target: 'good', actions: 'setCost(0)' },
-        UNEXPECTED: { target: 'bad', actions: 'setCost(10)' }
-      }
+        START: { target: "good", actions: "setCost(0)" },
+        UNEXPECTED: { target: "bad", actions: "setCost(10)" },
+      },
     },
     bad: {
-      tags: ['Bad'],
+      tags: ["Bad"],
       on: {
-        RECOVER: { target: 'good', actions: 'setCost(-5)' }
-      }
-    }
-  }
+        RECOVER: { target: "good", actions: "setCost(-5)" },
+      },
+    },
+  },
 });
 
 // Initialize RATEN
 const raten = new RATEN(behavioralModel, propertyModel, {
   usrMAX: 50,
-  depthMAX: 5
+  depthMAX: 5,
 });
 
 // Collect execution traces
 const traces = [
-  { event: 'START', message: '' },
-  { event: 'UNEXPECTED', message: '' }
+  { event: "START", message: "" },
+  { event: "UNEXPECTED", message: "" },
 ];
 
 // Perform robustness analysis
 const result = raten.analyze(traces);
 
-console.log('Total Cost:', result.TTcost);
-console.log('Is Robust:', result.isRobust);
-console.log('Violations:', result.violations);
+console.log("Total Cost:", result.TTcost);
+console.log("Is Robust:", result.isRobust);
+console.log("Violations:", result.violations);
 ```
 
 ### Integration with Testing Framework
 
 ```typescript
-import { RATEN } from '@xstate/raten';
+import { RATEN } from "@xstate/raten";
 
 // Initialize RATEN with test enhancement
 const raten = new RATEN(behavioralModel, propertyModel);
 
 // Original test suite
 const originalTests = [
-  { value: 10, action: 'INCREMENT' },
-  { value: 50, action: 'SET_HIGH' },
-  { value: 20, action: 'INCREMENT' }
+  { value: 10, action: "INCREMENT" },
+  { value: 50, action: "SET_HIGH" },
+  { value: 20, action: "INCREMENT" },
 ];
 
 // Reduce test suite using property model queries
 const reducedTests = raten.reduceTestSuite(
   originalTests,
-  ['value'], // critical variables
+  ["value"], // critical variables
   (testCase, varName) => ({
-    state: testCase[varName] >= 100 ? 'bad' : 'good',
+    state: testCase[varName] >= 100 ? "bad" : "good",
     context: { [varName]: testCase[varName] },
-    machine: propertyModel
+    machine: propertyModel,
   })
 );
 
-console.log('Original size:', originalTests.length);
-console.log('Reduced size:', reducedTests.length);
-console.log('Reduction:', 
-  ((1 - reducedTests.length / originalTests.length) * 100).toFixed(2) + '%'
+console.log("Original size:", originalTests.length);
+console.log("Reduced size:", reducedTests.length);
+console.log(
+  "Reduction:",
+  ((1 - reducedTests.length / originalTests.length) * 100).toFixed(2) + "%"
 );
 ```
 
@@ -154,11 +155,13 @@ new RATEN(bsm: StateMachine, psm: StateMachine, config?: RATENConfig)
 ```
 
 **Parameters:**
+
 - `bsm`: Behavioral State Machine (BSM)
 - `psm`: Property State Machine (PSM)
 - `config`: Optional configuration object
 
 **Configuration Options:**
+
 - `usrMAX` (number, default: 50): Maximum acceptable total cost threshold
 - `depthMAX` (number, default: 5): Maximum depth for back-track cost path search
 - `goodStateTags` (string[], default: ['Good']): Tags identifying good states
@@ -172,9 +175,11 @@ new RATEN(bsm: StateMachine, psm: StateMachine, config?: RATENConfig)
 Analyzes execution traces for robustness violations.
 
 **Parameters:**
+
 - `traces`: Array of trace entries, each containing `event` and optional `message`
 
 **Returns:**
+
 - `RobustnessResult` object with:
   - `TTcost`: Total robustness cost (OTcost + BTcost)
   - `OTcost`: Off-Track cost
@@ -187,11 +192,13 @@ Analyzes execution traces for robustness violations.
 Reduces test suite by filtering tests that would reach Bad states.
 
 **Parameters:**
+
 - `testSuite`: Original test suite
 - `criticalVars`: Array of critical variable names to test
 - `simulateExecution`: Optional function to simulate test execution
 
 **Returns:**
+
 - Reduced test suite containing only tests that reach Bad states
 
 ##### `getTransitionRules(): TransitionRules`
@@ -260,12 +267,68 @@ Costs are extracted from transition actions. Supported formats:
 - Actions with `cost` property
 - Actions with type containing cost (e.g., "setCost:10")
 
+## Evaluation Framework
+
+RATEN includes a comprehensive evaluation framework to reproduce the experimental results from the research paper.
+
+### Running the Evaluation
+
+```typescript
+import { runAllEvaluations, printResultsSummary } from "@xstate/raten";
+
+// Run complete evaluation
+const output = runAllEvaluations(1000);
+printResultsSummary(output);
+```
+
+### Case Studies
+
+8 case studies are included with varying complexity:
+
+| Model | States | Transitions | Type         |
+| ----- | ------ | ----------- | ------------ |
+| CM    | 7      | 12          | Simple       |
+| PR    | 25     | 29          | Simple       |
+| RO    | 32     | 38          | Simple       |
+| FO    | 49     | 53          | Simple       |
+| RCM   | 25     | 28          | Instrumented |
+| RPR   | 68     | 76          | Instrumented |
+| RRO   | 1,043  | 1,087       | Instrumented |
+| RFO   | 2,364  | 2,396       | Instrumented |
+
+### Evaluation Components
+
+- **Mutant Generators**: Creates WM, WP, MM failure scenarios
+- **Trace Generators**: Produces Single, Sequential, Nested execution modes
+- **Basic Evaluation**: Table 2 results (precision/recall metrics)
+- **Compound Evaluation**: Table 3 results (runtime overhead)
+- **MRegTest Evaluation**: Figures 4-6 (test suite reduction)
+
+### Key Results
+
+| Metric               | Range         |
+| -------------------- | ------------- |
+| Precision            | 0.77 - 1.00   |
+| Recall               | 0.78 - 1.00   |
+| Runtime Overhead     | 1.02x - 1.28x |
+| Test Suite Reduction | 17% - 78%     |
+
+For detailed documentation, see [Evaluation README](src/evaluation/README.md).
+
 ## Examples
 
 See the `examples/` directory for complete usage examples:
 
 - `basic-usage.ts`: Simple robustness analysis
 - `test-enhancement.ts`: Test suite reduction
+
+## Testing
+
+```bash
+npm test
+```
+
+**Test Results**: 33 tests passing across 4 test suites.
 
 ## License
 
