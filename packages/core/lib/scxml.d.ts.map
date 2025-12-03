@@ -1,1 +1,0 @@
-{"version":3,"file":"scxml.d.ts","sourceRoot":"","sources":["../src/scxml.ts"],"names":[],"mappings":"AASA,OAAO,EAAE,eAAe,EAAW,MAAM,SAAS,CAAC;AA4ZnD,MAAM,WAAW,qBAAqB;IACpC,SAAS,CAAC,EAAE,MAAM,CAAC;CACpB;AAsCD,wBAAgB,SAAS,CACvB,GAAG,EAAE,MAAM,EACX,OAAO,EAAE,qBAAqB,GAC7B,eAAe,CAGjB"}

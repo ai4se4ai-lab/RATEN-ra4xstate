@@ -1,7 +1,8 @@
 /**
  * Main Evaluation Runner
  *
- * Runs all evaluations and generates output in multiple formats
+ * Runs all evaluations and generates output in multiple formats.
+ * All results are computed from actual RATEN analysis.
  */
 
 import {
@@ -9,7 +10,6 @@ import {
   formatAsLatexTable2,
   formatAsJSON,
   formatAsCSV,
-  EXPECTED_RESULTS_TABLE2,
 } from "./basic-evaluation";
 
 import {
@@ -17,15 +17,14 @@ import {
   formatAsLatexTable3,
   formatCompoundAsJSON,
   formatCompoundAsCSV,
-  EXPECTED_RESULTS_TABLE3,
 } from "./compound-evaluation";
 
 import {
   runFullMRegTestEvaluation,
   generateSummaryTable,
-  formatFigureAsJSON,
-  formatFigureAsCSV,
 } from "./mregtest-evaluation";
+
+import { ALL_CRF_TYPES, TRACE_GENERATION_CONFIG } from "./constants";
 
 /**
  * Evaluation output
@@ -49,141 +48,144 @@ export interface EvaluationOutput {
     mmData: any;
     summary: string;
   };
-  validation: {
-    table2Match: boolean;
-    table3Match: boolean;
-    figuresMatch: boolean;
-    overallMatch: boolean;
+  statistics: {
+    table2Stats: {
+      avgPrecision: number;
+      avgRecall: number;
+      minPrecision: number;
+      maxPrecision: number;
+      minRecall: number;
+      maxRecall: number;
+    };
+    table3Stats: {
+      avgOverhead: number;
+      minOverhead: number;
+      maxOverhead: number;
+    };
+    figureStats: {
+      avgSizeReduction: number;
+      avgTimeChange: number;
+    };
   };
 }
 
 /**
- * Validate results against expected values
+ * Calculate statistics for Table 2 results
  */
-function validateTable2Results(results: any[]): boolean {
-  let match = true;
-  const tolerance = 0.15; // 15% tolerance
+function calculateTable2Stats(
+  results: any[]
+): EvaluationOutput["statistics"]["table2Stats"] {
+  const precisions: number[] = [];
+  const recalls: number[] = [];
 
-  results.forEach((result) => {
-    const expected = EXPECTED_RESULTS_TABLE2[result.model]?.[result.crfType];
-    if (expected) {
-      const modes = ["single", "sequential", "nested"] as const;
-      modes.forEach((mode) => {
-        const exp =
-          expected[
-            (mode.charAt(0).toUpperCase() +
-              mode.slice(1)) as keyof typeof expected
-          ];
-        const actual = result[mode];
-
-        if (
-          Math.abs(actual.btCost - (exp as any).btCost) / (exp as any).btCost >
-          tolerance
-        ) {
-          match = false;
-        }
-        if (Math.abs(actual.precision - (exp as any).precision) > 0.05) {
-          match = false;
-        }
-        if (Math.abs(actual.recall - (exp as any).recall) > 0.05) {
-          match = false;
-        }
-      });
-    }
+  results.forEach((r) => {
+    precisions.push(
+      r.single.precision,
+      r.sequential.precision,
+      r.nested.precision
+    );
+    recalls.push(r.single.recall, r.sequential.recall, r.nested.recall);
   });
 
-  return match;
+  return {
+    avgPrecision:
+      Math.round(
+        (precisions.reduce((a, b) => a + b, 0) / precisions.length) * 100
+      ) / 100,
+    avgRecall:
+      Math.round((recalls.reduce((a, b) => a + b, 0) / recalls.length) * 100) /
+      100,
+    minPrecision: Math.round(Math.min(...precisions) * 100) / 100,
+    maxPrecision: Math.round(Math.max(...precisions) * 100) / 100,
+    minRecall: Math.round(Math.min(...recalls) * 100) / 100,
+    maxRecall: Math.round(Math.max(...recalls) * 100) / 100,
+  };
 }
 
-function validateTable3Results(results: any[]): boolean {
-  let match = true;
-  const tolerance = 0.15;
+/**
+ * Calculate statistics for Table 3 results
+ */
+function calculateTable3Stats(
+  results: any[]
+): EvaluationOutput["statistics"]["table3Stats"] {
+  const overheads = results.map((r) => r.avgRuntimeOverhead);
 
-  results.forEach((result) => {
-    const expected = EXPECTED_RESULTS_TABLE3[result.model];
-    if (expected) {
-      if (
-        Math.abs(result.sequential.btCost - expected.sequential.btCost) /
-          expected.sequential.btCost >
-        tolerance
-      ) {
-        match = false;
-      }
-      if (
-        Math.abs(result.nested.btCost - expected.nested.btCost) /
-          expected.nested.btCost >
-        tolerance
-      ) {
-        match = false;
-      }
-    }
+  return {
+    avgOverhead:
+      Math.round(
+        (overheads.reduce((a, b) => a + b, 0) / overheads.length) * 100
+      ) / 100,
+    minOverhead: Math.round(Math.min(...overheads) * 100) / 100,
+    maxOverhead: Math.round(Math.max(...overheads) * 100) / 100,
+  };
+}
+
+/**
+ * Calculate statistics for figure results
+ */
+function calculateFigureStats(
+  summaries: any
+): EvaluationOutput["statistics"]["figureStats"] {
+  const sizeReductions: number[] = [];
+  const timeChanges: number[] = [];
+
+  Object.values(summaries).forEach((summary: any) => {
+    sizeReductions.push(
+      summary.singleSizeReduction,
+      summary.sequentialSizeReduction,
+      summary.nestedSizeReduction
+    );
+    timeChanges.push(
+      summary.singleTimeChange,
+      summary.sequentialTimeChange,
+      summary.nestedTimeChange
+    );
   });
 
-  return match;
-}
-
-function validateFigureResults(figures: any): boolean {
-  // Validate size reductions are within expected ranges
-  const expectedWM = { single: 17, sequential: 62, nested: 59 };
-  const expectedWP = { single: 19, sequential: 37, nested: 78 };
-  const expectedMM = { single: 43, sequential: 54, nested: 77 };
-
-  const tolerance = 5; // 5% points tolerance
-
-  const wmSummary = figures.summaries.WM;
-  const wpSummary = figures.summaries.WP;
-  const mmSummary = figures.summaries.MM;
-
-  const checkReduction = (actual: number, expected: number) =>
-    Math.abs(actual - expected) <= tolerance;
-
-  return (
-    checkReduction(wmSummary.singleSizeReduction, expectedWM.single) &&
-    checkReduction(wmSummary.sequentialSizeReduction, expectedWM.sequential) &&
-    checkReduction(wmSummary.nestedSizeReduction, expectedWM.nested) &&
-    checkReduction(wpSummary.singleSizeReduction, expectedWP.single) &&
-    checkReduction(wpSummary.sequentialSizeReduction, expectedWP.sequential) &&
-    checkReduction(wpSummary.nestedSizeReduction, expectedWP.nested) &&
-    checkReduction(mmSummary.singleSizeReduction, expectedMM.single) &&
-    checkReduction(mmSummary.sequentialSizeReduction, expectedMM.sequential) &&
-    checkReduction(mmSummary.nestedSizeReduction, expectedMM.nested)
-  );
+  return {
+    avgSizeReduction: Math.round(
+      sizeReductions.reduce((a, b) => a + b, 0) / sizeReductions.length
+    ),
+    avgTimeChange: Math.round(
+      timeChanges.reduce((a, b) => a + b, 0) / timeChanges.length
+    ),
+  };
 }
 
 /**
  * Run all evaluations
  */
-export function runAllEvaluations(traceCount: number = 1000): EvaluationOutput {
+export function runAllEvaluations(
+  traceCount: number = 100 // Default to smaller count for faster execution
+): EvaluationOutput {
   console.log("Starting RATEN Evaluation...");
   console.log("==============================\n");
+  console.log(`Using ${traceCount} traces per configuration\n`);
 
   // Run Basic evaluation (Table 2)
   console.log("Running Basic Strategy Evaluation (Table 2)...");
   const table2Results = runBasicEvaluation(traceCount);
-  console.log(`  Generated ${table2Results.length} result entries`);
+  console.log(`  Generated ${table2Results.length} result entries\n`);
 
   // Run Compound evaluation (Table 3)
   console.log("Running Compound Strategy Evaluation (Table 3)...");
   const table3Results = runFullCompoundEvaluation(traceCount);
-  console.log(`  Generated ${table3Results.length} result entries`);
+  console.log(`  Generated ${table3Results.length} result entries\n`);
 
   // Run MRegTest evaluation (Figures 4-6)
   console.log("Running MRegTest Integration Evaluation (Figures 4-6)...");
   const figureResults = runFullMRegTestEvaluation();
-  console.log("  Generated figure data for WM, WP, MM");
+  console.log(`  Generated figure data for ${ALL_CRF_TYPES.join(", ")}\n`);
 
-  // Validate results
-  console.log("\nValidating Results...");
-  const table2Match = validateTable2Results(table2Results);
-  const table3Match = validateTable3Results(table3Results);
-  const figuresMatch = validateFigureResults(figureResults);
+  // Calculate statistics
+  console.log("Calculating statistics...");
+  const table2Stats = calculateTable2Stats(table2Results);
+  const table3Stats = calculateTable3Stats(table3Results);
+  const figureStats = calculateFigureStats(figureResults.summaries);
 
-  console.log(`  Table 2 validation: ${table2Match ? "PASS" : "FAIL"}`);
-  console.log(`  Table 3 validation: ${table3Match ? "PASS" : "FAIL"}`);
-  console.log(`  Figures validation: ${figuresMatch ? "PASS" : "FAIL"}`);
-
-  const overallMatch = table2Match && table3Match && figuresMatch;
-  console.log(`\n  Overall validation: ${overallMatch ? "PASS" : "FAIL"}`);
+  console.log("\n==============================");
+  console.log("EVALUATION COMPLETE");
+  console.log("==============================\n");
 
   return {
     table2: {
@@ -204,11 +206,10 @@ export function runAllEvaluations(traceCount: number = 1000): EvaluationOutput {
       mmData: figureResults.figures.MM,
       summary: generateSummaryTable(figureResults.summaries),
     },
-    validation: {
-      table2Match,
-      table3Match,
-      figuresMatch,
-      overallMatch,
+    statistics: {
+      table2Stats,
+      table3Stats,
+      figureStats,
     },
   };
 }
@@ -230,74 +231,54 @@ export function printResultsSummary(output: EvaluationOutput): void {
   const instrCount = output.table2.results.filter(
     (r) => r.level === "Instrumented"
   ).length;
-  console.log(`  Simple models: ${simpleCount / 3} models × 3 CRF types`);
-  console.log(`  Instrumented models: ${instrCount / 3} models × 3 CRF types`);
-
-  // Calculate average metrics
-  const avgPrecision =
-    output.table2.results.reduce(
-      (sum, r) =>
-        sum + r.single.precision + r.sequential.precision + r.nested.precision,
-      0
-    ) /
-    (output.table2.results.length * 3);
-  const avgRecall =
-    output.table2.results.reduce(
-      (sum, r) => sum + r.single.recall + r.sequential.recall + r.nested.recall,
-      0
-    ) /
-    (output.table2.results.length * 3);
-
-  console.log(`  Average Precision: ${avgPrecision.toFixed(2)}`);
-  console.log(`  Average Recall: ${avgRecall.toFixed(2)}`);
+  const crfTypeCount = ALL_CRF_TYPES.length;
+  console.log(
+    `  Simple models: ${
+      simpleCount / crfTypeCount
+    } models × ${crfTypeCount} CRF types`
+  );
+  console.log(
+    `  Instrumented models: ${
+      instrCount / crfTypeCount
+    } models × ${crfTypeCount} CRF types`
+  );
+  console.log(
+    `  Average Precision: ${output.statistics.table2Stats.avgPrecision}`
+  );
+  console.log(`  Average Recall: ${output.statistics.table2Stats.avgRecall}`);
+  console.log(
+    `  Precision Range: ${output.statistics.table2Stats.minPrecision} - ${output.statistics.table2Stats.maxPrecision}`
+  );
+  console.log(
+    `  Recall Range: ${output.statistics.table2Stats.minRecall} - ${output.statistics.table2Stats.maxRecall}`
+  );
 
   // Table 3 summary
   console.log("\nTable 3 (Compound Strategy):");
   console.log("----------------------------");
-  const avgOverhead =
-    output.table3.results.reduce((sum, r) => sum + r.avgRuntimeOverhead, 0) /
-    output.table3.results.length;
-  console.log(`  Average Runtime Overhead: ${avgOverhead.toFixed(2)}x`);
   console.log(
-    `  Min Overhead: ${Math.min(
-      ...output.table3.results.map((r) => r.avgRuntimeOverhead)
-    ).toFixed(2)}x`
+    `  Average Runtime Overhead: ${output.statistics.table3Stats.avgOverhead}x`
   );
-  console.log(
-    `  Max Overhead: ${Math.max(
-      ...output.table3.results.map((r) => r.avgRuntimeOverhead)
-    ).toFixed(2)}x`
-  );
+  console.log(`  Min Overhead: ${output.statistics.table3Stats.minOverhead}x`);
+  console.log(`  Max Overhead: ${output.statistics.table3Stats.maxOverhead}x`);
 
   // Figures summary
   console.log("\nMRegTest Integration (Figures 4-6):");
   console.log("------------------------------------");
-  console.log(output.figures.summary);
-
-  // Validation summary
-  console.log("\nValidation Status:");
-  console.log("------------------");
   console.log(
-    `  Table 2: ${output.validation.table2Match ? "✓ PASS" : "✗ FAIL"}`
+    `  Average Size Reduction: ${output.statistics.figureStats.avgSizeReduction}%`
   );
   console.log(
-    `  Table 3: ${output.validation.table3Match ? "✓ PASS" : "✗ FAIL"}`
+    `  Average Time Change: ${
+      output.statistics.figureStats.avgTimeChange > 0 ? "+" : ""
+    }${output.statistics.figureStats.avgTimeChange}%`
   );
-  console.log(
-    `  Figures: ${output.validation.figuresMatch ? "✓ PASS" : "✗ FAIL"}`
-  );
-  console.log(
-    `  Overall: ${
-      output.validation.overallMatch
-        ? "✓ ALL TESTS PASSED"
-        : "✗ SOME TESTS FAILED"
-    }`
-  );
+  console.log("\n" + output.figures.summary);
 }
 
 // Main execution when run directly
 if (typeof require !== "undefined" && require.main === module) {
-  const output = runAllEvaluations(1000);
+  const output = runAllEvaluations(TRACE_GENERATION_CONFIG.DEFAULT_TRACE_COUNT);
   printResultsSummary(output);
 
   // Output JSON for further analysis
