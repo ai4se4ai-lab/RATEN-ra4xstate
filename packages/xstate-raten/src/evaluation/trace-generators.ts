@@ -10,6 +10,11 @@
 import type { Trace } from "../types";
 import type { CRFType, MutantResult } from "./mutant-generators";
 import { generateMutant, generateCompoundMutant } from "./mutant-generators";
+import {
+  TRACE_GENERATION_CONFIG,
+  MUTATION_CONFIG,
+  FAILURE_GENERATION_CONFIG,
+} from "./constants";
 
 /**
  * Execution modes
@@ -149,9 +154,12 @@ function generateSingleTrace(
     trace.push({
       event,
       message: {
-        timestamp: Date.now() + i * 100,
+        timestamp:
+          Date.now() + i * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
         index: i,
-        data: { value: Math.random() * 100 },
+        data: {
+          value: Math.random() * TRACE_GENERATION_CONFIG.DATA_VALUE_RANGE,
+        },
       },
     });
   }
@@ -193,7 +201,7 @@ function generateSingleModeTraces(config: TraceGeneratorConfig): {
     } else {
       mutants.push(
         generateCompoundMutant(trace, config.crfTypes, {
-          injectionRate: 0.05,
+          injectionRate: MUTATION_CONFIG.COMPOUND_INJECTION_RATE,
         })
       );
     }
@@ -216,7 +224,16 @@ function generateSequentialModeTraces(config: TraceGeneratorConfig): {
   for (let i = 0; i < config.traceCount; i++) {
     const trace: Trace[] = [];
     const failurePoints: number[] = [];
-    const numFailures = 2 + Math.floor(Math.random() * 3); // 2-4 failures
+
+    // Random number of failures within configured range
+    const numFailures =
+      FAILURE_GENERATION_CONFIG.SEQUENTIAL_FAILURES_MIN +
+      Math.floor(
+        Math.random() *
+          (FAILURE_GENERATION_CONFIG.SEQUENTIAL_FAILURES_MAX -
+            FAILURE_GENERATION_CONFIG.SEQUENTIAL_FAILURES_MIN +
+            1)
+      );
 
     let currentPos = 0;
     for (let f = 0; f < numFailures; f++) {
@@ -232,7 +249,9 @@ function generateSequentialModeTraces(config: TraceGeneratorConfig): {
         trace.push({
           event,
           message: {
-            timestamp: Date.now() + currentPos * 100,
+            timestamp:
+              Date.now() +
+              currentPos * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
             index: currentPos,
           },
         });
@@ -242,8 +261,15 @@ function generateSequentialModeTraces(config: TraceGeneratorConfig): {
       // Mark failure point
       failurePoints.push(currentPos);
 
-      // Add recovery events
-      const recoveryLength = 1 + Math.floor(Math.random() * 2);
+      // Add recovery events (random length within configured range)
+      const recoveryLength =
+        FAILURE_GENERATION_CONFIG.SEQUENTIAL_RECOVERY_LENGTH_MIN +
+        Math.floor(
+          Math.random() *
+            (FAILURE_GENERATION_CONFIG.SEQUENTIAL_RECOVERY_LENGTH_MAX -
+              FAILURE_GENERATION_CONFIG.SEQUENTIAL_RECOVERY_LENGTH_MIN +
+              1)
+        );
       for (let r = 0; r < recoveryLength; r++) {
         const recoveryEvent =
           config.recoveryEvents[
@@ -252,7 +278,9 @@ function generateSequentialModeTraces(config: TraceGeneratorConfig): {
         trace.push({
           event: recoveryEvent,
           message: {
-            timestamp: Date.now() + currentPos * 100,
+            timestamp:
+              Date.now() +
+              currentPos * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
             index: currentPos,
             recovery: true,
           },
@@ -300,7 +328,10 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
     const failurePoints: number[] = [];
 
     // Initial normal segment
-    const initialLength = Math.floor(config.averageTraceLength * 0.3);
+    const initialLength = Math.floor(
+      config.averageTraceLength *
+        FAILURE_GENERATION_CONFIG.NESTED_INITIAL_SEGMENT_FRACTION
+    );
     for (let j = 0; j < initialLength; j++) {
       const event =
         config.availableEvents[
@@ -308,12 +339,23 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
         ];
       trace.push({
         event,
-        message: { timestamp: Date.now() + j * 100, index: j },
+        message: {
+          timestamp:
+            Date.now() + j * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
+          index: j,
+        },
       });
     }
 
     // Nested failure segment - failures occur before recovery completes
-    const nestedDepth = 2 + Math.floor(Math.random() * 2); // 2-3 nested levels
+    const nestedDepth =
+      FAILURE_GENERATION_CONFIG.NESTED_DEPTH_MIN +
+      Math.floor(
+        Math.random() *
+          (FAILURE_GENERATION_CONFIG.NESTED_DEPTH_MAX -
+            FAILURE_GENERATION_CONFIG.NESTED_DEPTH_MIN +
+            1)
+      );
     let currentPos = initialLength;
 
     for (let depth = 0; depth < nestedDepth; depth++) {
@@ -321,10 +363,18 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
       failurePoints.push(currentPos);
 
       // Add some events (simulating partial recovery attempt)
-      const partialRecovery = 1 + Math.floor(Math.random() * 2);
+      const partialRecovery =
+        FAILURE_GENERATION_CONFIG.NESTED_PARTIAL_RECOVERY_MIN +
+        Math.floor(
+          Math.random() *
+            (FAILURE_GENERATION_CONFIG.NESTED_PARTIAL_RECOVERY_MAX -
+              FAILURE_GENERATION_CONFIG.NESTED_PARTIAL_RECOVERY_MIN +
+              1)
+        );
       for (let p = 0; p < partialRecovery; p++) {
         const event =
-          Math.random() < 0.5
+          Math.random() <
+          TRACE_GENERATION_CONFIG.NESTED_RECOVERY_VS_NORMAL_PROBABILITY
             ? config.recoveryEvents[
                 Math.floor(Math.random() * config.recoveryEvents.length)
               ]
@@ -334,7 +384,9 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
         trace.push({
           event,
           message: {
-            timestamp: Date.now() + currentPos * 100,
+            timestamp:
+              Date.now() +
+              currentPos * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
             index: currentPos,
             nestedLevel: depth,
           },
@@ -344,7 +396,14 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
     }
 
     // Final recovery segment
-    const recoveryLength = 2 + Math.floor(Math.random() * 3);
+    const recoveryLength =
+      FAILURE_GENERATION_CONFIG.NESTED_FINAL_RECOVERY_MIN +
+      Math.floor(
+        Math.random() *
+          (FAILURE_GENERATION_CONFIG.NESTED_FINAL_RECOVERY_MAX -
+            FAILURE_GENERATION_CONFIG.NESTED_FINAL_RECOVERY_MIN +
+            1)
+      );
     for (let r = 0; r < recoveryLength; r++) {
       const recoveryEvent =
         config.recoveryEvents[
@@ -353,7 +412,9 @@ function generateNestedModeTraces(config: TraceGeneratorConfig): {
       trace.push({
         event: recoveryEvent,
         message: {
-          timestamp: Date.now() + currentPos * 100,
+          timestamp:
+            Date.now() +
+            currentPos * TRACE_GENERATION_CONFIG.EVENT_TIME_INTERVAL_MS,
           index: currentPos,
           finalRecovery: true,
         },
@@ -396,9 +457,14 @@ export function generateTraces(
     : undefined;
 
   const fullConfig: TraceGeneratorConfig = {
-    traceCount: config.traceCount ?? 1000,
-    averageTraceLength: config.averageTraceLength ?? 20,
-    traceLengthVariance: config.traceLengthVariance ?? 5,
+    traceCount:
+      config.traceCount ?? TRACE_GENERATION_CONFIG.DEFAULT_TRACE_COUNT,
+    averageTraceLength:
+      config.averageTraceLength ??
+      TRACE_GENERATION_CONFIG.DEFAULT_AVERAGE_LENGTH,
+    traceLengthVariance:
+      config.traceLengthVariance ??
+      TRACE_GENERATION_CONFIG.DEFAULT_LENGTH_VARIANCE,
     mode: config.mode ?? "Single",
     strategy: config.strategy ?? "Basic",
     crfTypes: config.crfTypes ?? ["WM"],
@@ -406,7 +472,9 @@ export function generateTraces(
       modelEvents?.normal ?? ["EVENT_A", "EVENT_B", "EVENT_C"],
     recoveryEvents: config.recoveryEvents ??
       modelEvents?.recovery ?? ["RECOVER", "RETRY"],
-    recoveryProbability: config.recoveryProbability ?? 0.7,
+    recoveryProbability:
+      config.recoveryProbability ??
+      TRACE_GENERATION_CONFIG.DEFAULT_RECOVERY_PROBABILITY,
   };
 
   let result: { traces: Trace[][]; mutants: MutantResult[] };
@@ -449,7 +517,7 @@ export function generateTraces(
  * Generate traces for all case studies
  */
 export function generateAllCaseStudyTraces(
-  traceCount: number = 1000,
+  traceCount: number = TRACE_GENERATION_CONFIG.DEFAULT_TRACE_COUNT,
   mode: ExecutionMode = "Single",
   strategy: TestingStrategy = "Basic",
   crfTypes: CRFType[] = ["WM"]
@@ -481,9 +549,9 @@ export function generateEvaluationTraces(
 ): TraceSet {
   return generateTraces({
     modelKey,
-    traceCount: 100000,
-    averageTraceLength: 25,
-    traceLengthVariance: 10,
+    traceCount: TRACE_GENERATION_CONFIG.EVALUATION_TRACE_COUNT,
+    averageTraceLength: TRACE_GENERATION_CONFIG.EVALUATION_AVERAGE_LENGTH,
+    traceLengthVariance: TRACE_GENERATION_CONFIG.EVALUATION_LENGTH_VARIANCE,
     mode,
     strategy,
     crfTypes: strategy === "Basic" ? [crfType] : ["WM", "WP", "MM"],

@@ -10,6 +10,16 @@
 
 import type { CRFType } from "./mutant-generators";
 import type { ExecutionMode } from "./trace-generators";
+import {
+  MREGTEST_TRACE_COUNTS,
+  MREGTEST_BASE_TRACE_COUNT,
+  EXPECTED_WM_RESULTS,
+  EXPECTED_WP_RESULTS,
+  EXPECTED_MM_RESULTS,
+  EXPECTED_SIZE_REDUCTIONS,
+  EVALUATION_METRICS_CONFIG,
+  getMRegTestExpectedResults,
+} from "./constants";
 
 /**
  * MRegTest comparison result
@@ -37,7 +47,7 @@ export interface MRegTestComparisonResult {
  */
 export interface FigureData {
   crfType: CRFType;
-  traceCounts: number[];
+  traceCounts: readonly number[];
   single: {
     tsMRegTest: number[];
     tsRATEN: number[];
@@ -59,111 +69,16 @@ export interface FigureData {
 }
 
 /**
- * Expected results from the paper (Figures 4-6)
- * Based on RFO (Refined FailOver) model with traces from 100K to 1M
- */
-const TRACE_COUNTS = [100000, 200000, 400000, 600000, 800000, 1000000];
-
-/**
- * Expected WM (Wrong Message) results - Figure 4
- * Size reduction: Single 17%, Sequential 62%, Nested 59%
- * Time improvement: Single -16%, Sequential +13%, Nested +20%
- */
-const EXPECTED_WM_RESULTS = {
-  single: {
-    tsMRegTest: [450, 900, 1800, 2700, 3600, 4500], // KB
-    tsRATEN: [373, 747, 1494, 2241, 2988, 3735], // 17% reduction
-    exMRegTest: [1200, 2400, 4800, 7200, 9600, 12000], // ms
-    exRATEN: [1392, 2784, 5568, 8352, 11136, 13920], // 16% slower
-  },
-  sequential: {
-    tsMRegTest: [450, 900, 1800, 2700, 3600, 4500],
-    tsRATEN: [171, 342, 684, 1026, 1368, 1710], // 62% reduction
-    exMRegTest: [1200, 2400, 4800, 7200, 9600, 12000],
-    exRATEN: [1044, 2088, 4176, 6264, 8352, 10440], // 13% faster
-  },
-  nested: {
-    tsMRegTest: [450, 900, 1800, 2700, 3600, 4500],
-    tsRATEN: [185, 369, 738, 1107, 1476, 1845], // 59% reduction
-    exMRegTest: [1200, 2400, 4800, 7200, 9600, 12000],
-    exRATEN: [960, 1920, 3840, 5760, 7680, 9600], // 20% faster
-  },
-};
-
-/**
- * Expected WP (Wrong Payload) results - Figure 5
- * Size reduction: Single 19%, Sequential 37%, Nested 78%
- * Time improvement: Single -28%, Sequential +9%, Nested +54%
- */
-const EXPECTED_WP_RESULTS = {
-  single: {
-    tsMRegTest: [420, 840, 1680, 2520, 3360, 4200],
-    tsRATEN: [340, 680, 1361, 2041, 2722, 3402], // 19% reduction
-    exMRegTest: [1100, 2200, 4400, 6600, 8800, 11000],
-    exRATEN: [1408, 2816, 5632, 8448, 11264, 14080], // 28% slower
-  },
-  sequential: {
-    tsMRegTest: [420, 840, 1680, 2520, 3360, 4200],
-    tsRATEN: [265, 529, 1058, 1588, 2117, 2646], // 37% reduction
-    exMRegTest: [1100, 2200, 4400, 6600, 8800, 11000],
-    exRATEN: [1001, 2002, 4004, 6006, 8008, 10010], // 9% faster
-  },
-  nested: {
-    tsMRegTest: [420, 840, 1680, 2520, 3360, 4200],
-    tsRATEN: [92, 185, 370, 554, 739, 924], // 78% reduction
-    exMRegTest: [1100, 2200, 4400, 6600, 8800, 11000],
-    exRATEN: [506, 1012, 2024, 3036, 4048, 5060], // 54% faster
-  },
-};
-
-/**
- * Expected MM (Missing Message) results - Figure 6
- * Size reduction: Single 43%, Sequential 54%, Nested 77%
- * Time improvement: Single +19%, Sequential +31%, Nested +53%
- */
-const EXPECTED_MM_RESULTS = {
-  single: {
-    tsMRegTest: [480, 960, 1920, 2880, 3840, 4800],
-    tsRATEN: [274, 547, 1094, 1642, 2189, 2736], // 43% reduction
-    exMRegTest: [1300, 2600, 5200, 7800, 10400, 13000],
-    exRATEN: [1053, 2106, 4212, 6318, 8424, 10530], // 19% faster
-  },
-  sequential: {
-    tsMRegTest: [480, 960, 1920, 2880, 3840, 4800],
-    tsRATEN: [221, 442, 883, 1325, 1766, 2208], // 54% reduction
-    exMRegTest: [1300, 2600, 5200, 7800, 10400, 13000],
-    exRATEN: [897, 1794, 3588, 5382, 7176, 8970], // 31% faster
-  },
-  nested: {
-    tsMRegTest: [480, 960, 1920, 2880, 3840, 4800],
-    tsRATEN: [110, 221, 442, 662, 883, 1104], // 77% reduction
-    exMRegTest: [1300, 2600, 5200, 7800, 10400, 13000],
-    exRATEN: [611, 1222, 2444, 3666, 4888, 6110], // 53% faster
-  },
-};
-
-/**
  * Generate MRegTest comparison results for a specific CRF type
  */
 export function generateMRegTestResults(crfType: CRFType): FigureData {
-  let expectedResults: typeof EXPECTED_WM_RESULTS;
-
-  switch (crfType) {
-    case "WM":
-      expectedResults = EXPECTED_WM_RESULTS;
-      break;
-    case "WP":
-      expectedResults = EXPECTED_WP_RESULTS;
-      break;
-    case "MM":
-      expectedResults = EXPECTED_MM_RESULTS;
-      break;
-    default:
-      throw new Error(`Unknown CRF type: ${crfType}`);
-  }
+  const expectedResults = getMRegTestExpectedResults(crfType);
 
   // Add slight variance to make results more realistic
-  const addVariance = (values: number[], variance: number = 0.02): number[] => {
+  const addVariance = (
+    values: readonly number[],
+    variance: number = EVALUATION_METRICS_CONFIG.FIGURE_DATA_VARIANCE_FACTOR
+  ): number[] => {
     return values.map((v) =>
       Math.round(v * (1 + (Math.random() - 0.5) * variance))
     );
@@ -171,7 +86,7 @@ export function generateMRegTestResults(crfType: CRFType): FigureData {
 
   return {
     crfType,
-    traceCounts: TRACE_COUNTS,
+    traceCounts: MREGTEST_TRACE_COUNTS,
     single: {
       tsMRegTest: addVariance(expectedResults.single.tsMRegTest),
       tsRATEN: addVariance(expectedResults.single.tsRATEN),
@@ -281,18 +196,26 @@ export function formatFigureAsCSV(
   data: FigureData,
   mode: ExecutionMode
 ): string {
-  const modeData = data[mode.toLowerCase() as keyof typeof data.single];
+  const modeKey = mode.toLowerCase() as "single" | "sequential" | "nested";
+  const modeData = data[modeKey];
   let csv =
     "TraceCount,TS-MRegTest(KB),TS-RATEN(KB),EX-MRegTest(ms),EX-RATEN(ms)\n";
 
-  TRACE_COUNTS.forEach((count, i) => {
-    csv += `${count},${(modeData as any).tsMRegTest[i]},${
-      (modeData as any).tsRATEN[i]
-    },${(modeData as any).exMRegTest[i]},${(modeData as any).exRATEN[i]}\n`;
+  MREGTEST_TRACE_COUNTS.forEach((count, i) => {
+    csv += `${count},${modeData.tsMRegTest[i]},${modeData.tsRATEN[i]},${modeData.exMRegTest[i]},${modeData.exRATEN[i]}\n`;
   });
 
   return csv;
 }
+
+/**
+ * CRF descriptions for documentation
+ */
+const CRF_DESCRIPTIONS: Record<CRFType, string> = {
+  WM: "Wrong Messages",
+  WP: "Wrong Payload Data",
+  MM: "Not Sending a Required Message",
+};
 
 /**
  * Generate LaTeX figure code
@@ -301,16 +224,10 @@ export function generateLatexFigure(
   crfType: CRFType,
   figureNumber: number
 ): string {
-  const crfDescriptions: Record<CRFType, string> = {
-    WM: "Wrong Messages",
-    WP: "Wrong Payload Data",
-    MM: "Not Sending a Required Message",
-  };
-
   return `\\begin{figure}[ht]
     \\centering
     \\includegraphics[width=1\\linewidth]{Figures/MRegTestVsRATEN_${crfType}.pdf}
-    \\caption{Results of Integrating \\textit{RATEN} into \\textit{MRegTest} for Detecting Regressions Caused by ${crfDescriptions[crfType]} (${crfType})}
+    \\caption{Results of Integrating \\textit{RATEN} into \\textit{MRegTest} for Detecting Regressions Caused by ${CRF_DESCRIPTIONS[crfType]} (${crfType})}
     \\label{fig:MRegTestVsRATEN_${crfType}}
 \\end{figure}`;
 }
@@ -351,11 +268,11 @@ export function getDetailedComparison(
   const figureData = generateMRegTestResults(crfType);
   const modeKey = mode.toLowerCase() as "single" | "sequential" | "nested";
   const modeData = figureData[modeKey];
-  const traceIndex = TRACE_COUNTS.indexOf(traceCount);
+  const traceIndex = MREGTEST_TRACE_COUNTS.indexOf(traceCount as any);
 
   if (traceIndex === -1) {
     // Interpolate for non-standard trace counts
-    const scaleFactor = traceCount / 100000;
+    const scaleFactor = traceCount / MREGTEST_BASE_TRACE_COUNT;
     return {
       traceCount,
       crfType,

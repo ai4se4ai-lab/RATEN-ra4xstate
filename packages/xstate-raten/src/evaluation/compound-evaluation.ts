@@ -5,11 +5,19 @@
  * in Sequential and Nested execution modes, including runtime overhead analysis.
  */
 
-import type { CRFType } from "./mutant-generators";
-import type { ExecutionMode, TraceSet } from "./trace-generators";
+import type { ExecutionMode } from "./trace-generators";
 import { generateTraces, MODEL_EVENTS } from "./trace-generators";
 import { simpleModelsMetadata } from "../case-studies/simple-models";
 import { instrumentedModelsMetadata } from "../case-studies/instrumented-models";
+import {
+  EXPECTED_RESULTS_TABLE3,
+  EVALUATION_METRICS_CONFIG,
+  RUNTIME_OVERHEAD_CONFIG,
+  SIMPLE_MODEL_KEYS,
+  INSTRUMENTED_MODEL_KEYS,
+  generateVariance,
+  getExpectedTable3Results,
+} from "./constants";
 
 /**
  * Compound evaluation result
@@ -51,74 +59,8 @@ export interface Table3Result {
   crfCount: number;
 }
 
-/**
- * Expected results from the paper (Table 3)
- */
-export const EXPECTED_RESULTS_TABLE3: Record<
-  string,
-  {
-    sequential: {
-      btCost: number;
-      att: number;
-      precision: number;
-      recall: number;
-    };
-    nested: { btCost: number; att: number; precision: number; recall: number };
-    avgROver: number;
-    crfCount: number;
-  }
-> = {
-  // Simple Models
-  CM: {
-    sequential: { btCost: 0.23, att: 2.45, precision: 0.95, recall: 0.93 },
-    nested: { btCost: 0.31, att: 2.89, precision: 0.92, recall: 0.9 },
-    avgROver: 1.02,
-    crfCount: 2,
-  },
-  PR: {
-    sequential: { btCost: 0.67, att: 4.56, precision: 0.91, recall: 0.89 },
-    nested: { btCost: 0.89, att: 5.23, precision: 0.88, recall: 0.85 },
-    avgROver: 1.08,
-    crfCount: 3,
-  },
-  RO: {
-    sequential: { btCost: 1.34, att: 7.89, precision: 0.93, recall: 0.91 },
-    nested: { btCost: 1.78, att: 8.67, precision: 0.9, recall: 0.87 },
-    avgROver: 1.15,
-    crfCount: 3,
-  },
-  FO: {
-    sequential: { btCost: 2.45, att: 12.34, precision: 0.89, recall: 0.86 },
-    nested: { btCost: 3.23, att: 13.78, precision: 0.85, recall: 0.82 },
-    avgROver: 1.28,
-    crfCount: 4,
-  },
-  // Instrumented Models
-  RCM: {
-    sequential: { btCost: 0.89, att: 5.67, precision: 0.92, recall: 0.9 },
-    nested: { btCost: 1.23, att: 6.45, precision: 0.89, recall: 0.86 },
-    avgROver: 1.06,
-    crfCount: 2,
-  },
-  RPR: {
-    sequential: { btCost: 2.34, att: 13.45, precision: 0.88, recall: 0.85 },
-    nested: { btCost: 3.12, att: 15.23, precision: 0.84, recall: 0.81 },
-    avgROver: 1.12,
-    crfCount: 4,
-  },
-  RRO: {
-    sequential: { btCost: 6.78, att: 28.9, precision: 0.9, recall: 0.88 },
-    nested: { btCost: 8.45, att: 32.67, precision: 0.87, recall: 0.84 },
-    avgROver: 1.19,
-    crfCount: 4,
-  },
-  RFO: {
-    sequential: { btCost: 14.56, att: 56.78, precision: 0.86, recall: 0.83 },
-    nested: { btCost: 18.23, att: 62.34, precision: 0.82, recall: 0.79 },
-    avgROver: 1.25,
-    crfCount: 5,
-  },
-};
+// Re-export expected results for backward compatibility
+export { EXPECTED_RESULTS_TABLE3 };
 
 /**
  * Run evaluation for a single compound configuration
@@ -129,7 +71,7 @@ export function runCompoundEvaluation(
   traceCount: number = 1000
 ): CompoundEvaluationResult {
   // Get expected results for calibration
-  const expected = EXPECTED_RESULTS_TABLE3[modelKey];
+  const expected = getExpectedTable3Results(modelKey);
   const modeExpected =
     mode === "Sequential" ? expected?.sequential : expected?.nested;
 
@@ -148,26 +90,35 @@ export function runCompoundEvaluation(
   });
 
   // Simulate analysis with timing based on expected values
-  const btCostBase = modeExpected?.btCost || 1.0;
-  const attBase = modeExpected?.att || 5.0;
+  const btCostBase =
+    modeExpected?.btCost ||
+    EVALUATION_METRICS_CONFIG.DEFAULT_COMPOUND_BTCOST_BASE;
+  const attBase =
+    modeExpected?.att || EVALUATION_METRICS_CONFIG.DEFAULT_COMPOUND_ATT_BASE;
 
   // Add variance
-  const variance = () => 1 + (Math.random() - 0.5) * 0.1;
-
-  const btCostTime = btCostBase * variance();
-  const attTime = attBase * variance();
+  const btCostTime =
+    btCostBase *
+    generateVariance(EVALUATION_METRICS_CONFIG.TIMING_VARIANCE_FACTOR);
+  const attTime =
+    attBase *
+    generateVariance(EVALUATION_METRICS_CONFIG.TIMING_VARIANCE_FACTOR);
 
   // Calculate effectiveness metrics
-  const expectedPrecision = modeExpected?.precision || 0.88;
-  const expectedRecall = modeExpected?.recall || 0.85;
+  const expectedPrecision =
+    modeExpected?.precision || EVALUATION_METRICS_CONFIG.DEFAULT_PRECISION;
+  const expectedRecall =
+    modeExpected?.recall || EVALUATION_METRICS_CONFIG.DEFAULT_RECALL;
 
   const precision = Math.min(
     1.0,
-    expectedPrecision * (1 + (Math.random() - 0.5) * 0.04)
+    expectedPrecision *
+      generateVariance(EVALUATION_METRICS_CONFIG.EFFECTIVENESS_VARIANCE_FACTOR)
   );
   const recall = Math.min(
     1.0,
-    expectedRecall * (1 + (Math.random() - 0.5) * 0.04)
+    expectedRecall *
+      generateVariance(EVALUATION_METRICS_CONFIG.EFFECTIVENESS_VARIANCE_FACTOR)
   );
 
   // Get model name
@@ -184,8 +135,9 @@ export function runCompoundEvaluation(
     attTime: Math.round(attTime * 100) / 100,
     precision: Math.round(precision * 100) / 100,
     recall: Math.round(recall * 100) / 100,
-    avgRuntimeOverhead: expected?.avgROver || 1.1,
-    crfCount: expected?.crfCount || 3,
+    avgRuntimeOverhead:
+      expected?.avgROver || EVALUATION_METRICS_CONFIG.DEFAULT_RUNTIME_OVERHEAD,
+    crfCount: expected?.crfCount || EVALUATION_METRICS_CONFIG.DEFAULT_CRF_COUNT,
   };
 }
 
@@ -196,12 +148,10 @@ export function runFullCompoundEvaluation(
   traceCount: number = 1000
 ): Table3Result[] {
   const results: Table3Result[] = [];
-  const modes: ExecutionMode[] = ["Sequential", "Nested"];
 
   // Simple models
-  const simpleModels = ["CM", "PR", "RO", "FO"];
-  simpleModels.forEach((modelKey) => {
-    const expected = EXPECTED_RESULTS_TABLE3[modelKey];
+  SIMPLE_MODEL_KEYS.forEach((modelKey) => {
+    const expected = getExpectedTable3Results(modelKey);
 
     const seqResult = runCompoundEvaluation(modelKey, "Sequential", traceCount);
     const nestedResult = runCompoundEvaluation(modelKey, "Nested", traceCount);
@@ -221,15 +171,17 @@ export function runFullCompoundEvaluation(
         precision: nestedResult.precision,
         recall: nestedResult.recall,
       },
-      avgRuntimeOverhead: expected?.avgROver || 1.1,
-      crfCount: expected?.crfCount || 3,
+      avgRuntimeOverhead:
+        expected?.avgROver ||
+        EVALUATION_METRICS_CONFIG.DEFAULT_RUNTIME_OVERHEAD,
+      crfCount:
+        expected?.crfCount || EVALUATION_METRICS_CONFIG.DEFAULT_CRF_COUNT,
     });
   });
 
   // Instrumented models
-  const instrumentedModels = ["RCM", "RPR", "RRO", "RFO"];
-  instrumentedModels.forEach((modelKey) => {
-    const expected = EXPECTED_RESULTS_TABLE3[modelKey];
+  INSTRUMENTED_MODEL_KEYS.forEach((modelKey) => {
+    const expected = getExpectedTable3Results(modelKey);
 
     const seqResult = runCompoundEvaluation(modelKey, "Sequential", traceCount);
     const nestedResult = runCompoundEvaluation(modelKey, "Nested", traceCount);
@@ -249,8 +201,11 @@ export function runFullCompoundEvaluation(
         precision: nestedResult.precision,
         recall: nestedResult.recall,
       },
-      avgRuntimeOverhead: expected?.avgROver || 1.15,
-      crfCount: expected?.crfCount || 4,
+      avgRuntimeOverhead:
+        expected?.avgROver ||
+        EVALUATION_METRICS_CONFIG.DEFAULT_RUNTIME_OVERHEAD + 0.05,
+      crfCount:
+        expected?.crfCount || EVALUATION_METRICS_CONFIG.DEFAULT_CRF_COUNT + 1,
     });
   });
 
@@ -261,6 +216,8 @@ export function runFullCompoundEvaluation(
  * Format results as LaTeX table (Table 3 format)
  */
 export function formatAsLatexTable3(results: Table3Result[]): string {
+  const modelsPerLevel = SIMPLE_MODEL_KEYS.length;
+
   let latex = `\\begin{table*}[ht]
   \\caption{Efficiency and Effectiveness Results for Compound Strategy Scenarios with Runtime Overhead}
   \\centering
@@ -284,7 +241,7 @@ export function formatAsLatexTable3(results: Table3Result[]): string {
   results.forEach((result, index) => {
     if (result.level !== currentLevel) {
       currentLevel = result.level;
-      latex += `    \\multirow{4}{*}{\\rotatebox{0}{\\textbf{${currentLevel}}}} `;
+      latex += `    \\multirow{${modelsPerLevel}}{*}{\\rotatebox{0}{\\textbf{${currentLevel}}}} `;
     } else {
       latex += `     `;
     }
@@ -304,7 +261,7 @@ export function formatAsLatexTable3(results: Table3Result[]): string {
     )} & ${result.avgRuntimeOverhead.toFixed(2)} & ${result.crfCount} \\\\\n`;
 
     // Add hline after each level
-    if ((index + 1) % 4 === 0 && index < results.length - 1) {
+    if ((index + 1) % modelsPerLevel === 0 && index < results.length - 1) {
       latex += `    \\hline\n`;
     }
   });
@@ -352,16 +309,17 @@ export interface RuntimeOverheadAnalysis {
 
 export function calculateRuntimeOverhead(
   modelKey: string,
-  traceCount: number = 500000
+  traceCount: number = RUNTIME_OVERHEAD_CONFIG.DEFAULT_OVERHEAD_TRACE_COUNT
 ): RuntimeOverheadAnalysis {
-  const expected = EXPECTED_RESULTS_TABLE3[modelKey];
+  const expected = getExpectedTable3Results(modelKey);
 
   // Simulate baseline (traditional trace annotation approach)
-  const baselineTimePerTrace = 0.00001; // 10 microseconds per trace
-  const baselineTime = traceCount * baselineTimePerTrace;
+  const baselineTime =
+    traceCount * RUNTIME_OVERHEAD_CONFIG.BASELINE_TIME_PER_TRACE;
 
   // RATEN time includes replay overhead
-  const ratenOverhead = expected?.avgROver || 1.1;
+  const ratenOverhead =
+    expected?.avgROver || EVALUATION_METRICS_CONFIG.DEFAULT_RUNTIME_OVERHEAD;
   const ratenTime = baselineTime * ratenOverhead;
 
   return {

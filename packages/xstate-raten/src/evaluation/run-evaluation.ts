@@ -9,7 +9,6 @@ import {
   formatAsLatexTable2,
   formatAsJSON,
   formatAsCSV,
-  EXPECTED_RESULTS_TABLE2,
 } from "./basic-evaluation";
 
 import {
@@ -17,15 +16,21 @@ import {
   formatAsLatexTable3,
   formatCompoundAsJSON,
   formatCompoundAsCSV,
-  EXPECTED_RESULTS_TABLE3,
 } from "./compound-evaluation";
 
 import {
   runFullMRegTestEvaluation,
   generateSummaryTable,
-  formatFigureAsJSON,
-  formatFigureAsCSV,
 } from "./mregtest-evaluation";
+
+import {
+  EXPECTED_RESULTS_TABLE2,
+  EXPECTED_RESULTS_TABLE3,
+  EXPECTED_SIZE_REDUCTIONS,
+  VALIDATION_TOLERANCES,
+  ALL_CRF_TYPES,
+  TRACE_GENERATION_CONFIG,
+} from "./constants";
 
 /**
  * Evaluation output
@@ -62,7 +67,6 @@ export interface EvaluationOutput {
  */
 function validateTable2Results(results: any[]): boolean {
   let match = true;
-  const tolerance = 0.15; // 15% tolerance
 
   results.forEach((result) => {
     const expected = EXPECTED_RESULTS_TABLE2[result.model]?.[result.crfType];
@@ -78,14 +82,20 @@ function validateTable2Results(results: any[]): boolean {
 
         if (
           Math.abs(actual.btCost - (exp as any).btCost) / (exp as any).btCost >
-          tolerance
+          VALIDATION_TOLERANCES.TIMING_TOLERANCE
         ) {
           match = false;
         }
-        if (Math.abs(actual.precision - (exp as any).precision) > 0.05) {
+        if (
+          Math.abs(actual.precision - (exp as any).precision) >
+          VALIDATION_TOLERANCES.PRECISION_RECALL_TOLERANCE
+        ) {
           match = false;
         }
-        if (Math.abs(actual.recall - (exp as any).recall) > 0.05) {
+        if (
+          Math.abs(actual.recall - (exp as any).recall) >
+          VALIDATION_TOLERANCES.PRECISION_RECALL_TOLERANCE
+        ) {
           match = false;
         }
       });
@@ -97,7 +107,6 @@ function validateTable2Results(results: any[]): boolean {
 
 function validateTable3Results(results: any[]): boolean {
   let match = true;
-  const tolerance = 0.15;
 
   results.forEach((result) => {
     const expected = EXPECTED_RESULTS_TABLE3[result.model];
@@ -105,14 +114,14 @@ function validateTable3Results(results: any[]): boolean {
       if (
         Math.abs(result.sequential.btCost - expected.sequential.btCost) /
           expected.sequential.btCost >
-        tolerance
+        VALIDATION_TOLERANCES.TIMING_TOLERANCE
       ) {
         match = false;
       }
       if (
         Math.abs(result.nested.btCost - expected.nested.btCost) /
           expected.nested.btCost >
-        tolerance
+        VALIDATION_TOLERANCES.TIMING_TOLERANCE
       ) {
         match = false;
       }
@@ -124,36 +133,60 @@ function validateTable3Results(results: any[]): boolean {
 
 function validateFigureResults(figures: any): boolean {
   // Validate size reductions are within expected ranges
-  const expectedWM = { single: 17, sequential: 62, nested: 59 };
-  const expectedWP = { single: 19, sequential: 37, nested: 78 };
-  const expectedMM = { single: 43, sequential: 54, nested: 77 };
-
-  const tolerance = 5; // 5% points tolerance
+  const checkReduction = (actual: number, expected: number) =>
+    Math.abs(actual - expected) <=
+    VALIDATION_TOLERANCES.FIGURE_REDUCTION_TOLERANCE;
 
   const wmSummary = figures.summaries.WM;
   const wpSummary = figures.summaries.WP;
   const mmSummary = figures.summaries.MM;
 
-  const checkReduction = (actual: number, expected: number) =>
-    Math.abs(actual - expected) <= tolerance;
-
   return (
-    checkReduction(wmSummary.singleSizeReduction, expectedWM.single) &&
-    checkReduction(wmSummary.sequentialSizeReduction, expectedWM.sequential) &&
-    checkReduction(wmSummary.nestedSizeReduction, expectedWM.nested) &&
-    checkReduction(wpSummary.singleSizeReduction, expectedWP.single) &&
-    checkReduction(wpSummary.sequentialSizeReduction, expectedWP.sequential) &&
-    checkReduction(wpSummary.nestedSizeReduction, expectedWP.nested) &&
-    checkReduction(mmSummary.singleSizeReduction, expectedMM.single) &&
-    checkReduction(mmSummary.sequentialSizeReduction, expectedMM.sequential) &&
-    checkReduction(mmSummary.nestedSizeReduction, expectedMM.nested)
+    checkReduction(
+      wmSummary.singleSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WM.single
+    ) &&
+    checkReduction(
+      wmSummary.sequentialSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WM.sequential
+    ) &&
+    checkReduction(
+      wmSummary.nestedSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WM.nested
+    ) &&
+    checkReduction(
+      wpSummary.singleSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WP.single
+    ) &&
+    checkReduction(
+      wpSummary.sequentialSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WP.sequential
+    ) &&
+    checkReduction(
+      wpSummary.nestedSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.WP.nested
+    ) &&
+    checkReduction(
+      mmSummary.singleSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.MM.single
+    ) &&
+    checkReduction(
+      mmSummary.sequentialSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.MM.sequential
+    ) &&
+    checkReduction(
+      mmSummary.nestedSizeReduction,
+      EXPECTED_SIZE_REDUCTIONS.MM.nested
+    )
   );
 }
 
 /**
  * Run all evaluations
  */
-export function runAllEvaluations(traceCount: number = 1000): EvaluationOutput {
+export function runAllEvaluations(
+  traceCount: number = TRACE_GENERATION_CONFIG.DEFAULT_TRACE_COUNT
+): EvaluationOutput {
   console.log("Starting RATEN Evaluation...");
   console.log("==============================\n");
 
@@ -170,7 +203,7 @@ export function runAllEvaluations(traceCount: number = 1000): EvaluationOutput {
   // Run MRegTest evaluation (Figures 4-6)
   console.log("Running MRegTest Integration Evaluation (Figures 4-6)...");
   const figureResults = runFullMRegTestEvaluation();
-  console.log("  Generated figure data for WM, WP, MM");
+  console.log(`  Generated figure data for ${ALL_CRF_TYPES.join(", ")}`);
 
   // Validate results
   console.log("\nValidating Results...");
@@ -230,8 +263,17 @@ export function printResultsSummary(output: EvaluationOutput): void {
   const instrCount = output.table2.results.filter(
     (r) => r.level === "Instrumented"
   ).length;
-  console.log(`  Simple models: ${simpleCount / 3} models × 3 CRF types`);
-  console.log(`  Instrumented models: ${instrCount / 3} models × 3 CRF types`);
+  const crfTypeCount = ALL_CRF_TYPES.length;
+  console.log(
+    `  Simple models: ${
+      simpleCount / crfTypeCount
+    } models × ${crfTypeCount} CRF types`
+  );
+  console.log(
+    `  Instrumented models: ${
+      instrCount / crfTypeCount
+    } models × ${crfTypeCount} CRF types`
+  );
 
   // Calculate average metrics
   const avgPrecision =
@@ -297,7 +339,7 @@ export function printResultsSummary(output: EvaluationOutput): void {
 
 // Main execution when run directly
 if (typeof require !== "undefined" && require.main === module) {
-  const output = runAllEvaluations(1000);
+  const output = runAllEvaluations(TRACE_GENERATION_CONFIG.DEFAULT_TRACE_COUNT);
   printResultsSummary(output);
 
   // Output JSON for further analysis

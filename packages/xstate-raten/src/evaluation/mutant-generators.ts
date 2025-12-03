@@ -8,6 +8,7 @@
  */
 
 import type { Trace } from "../types";
+import { MUTATION_CONFIG } from "./constants";
 
 /**
  * CRF Types
@@ -91,7 +92,7 @@ export function generateWMmutant(
   config: Partial<MutantConfig> = {}
 ): MutantResult {
   const {
-    injectionRate = 0.1,
+    injectionRate = MUTATION_CONFIG.DEFAULT_INJECTION_RATE,
     injectionPositions = [],
     wrongMessages = DEFAULT_WRONG_MESSAGES,
   } = config;
@@ -141,7 +142,7 @@ export function generateWPmutant(
   config: Partial<MutantConfig> = {}
 ): MutantResult {
   const {
-    injectionRate = 0.1,
+    injectionRate = MUTATION_CONFIG.DEFAULT_INJECTION_RATE,
     injectionPositions = [],
     wrongPayloads = DEFAULT_WRONG_PAYLOADS,
   } = config;
@@ -189,9 +190,9 @@ export function generateMMmutant(
   config: Partial<MutantConfig> = {}
 ): MutantResult {
   const {
-    injectionRate = 0.1,
+    injectionRate = MUTATION_CONFIG.DEFAULT_INJECTION_RATE,
     injectionPositions = [],
-    missingMessageTimeout = 5000,
+    missingMessageTimeout = MUTATION_CONFIG.DEFAULT_MM_TIMEOUT_MS,
   } = config;
 
   const mutatedTrace: Trace[] = [];
@@ -277,11 +278,13 @@ export function generateCompoundMutant(
 ): MutantResult {
   let currentTraces = [...traces];
   const allInjectionPoints: number[] = [];
+  const baseInjectionRate =
+    config.injectionRate || MUTATION_CONFIG.DEFAULT_INJECTION_RATE;
 
   crfTypes.forEach((crfType) => {
     const result = generateMutant(currentTraces, crfType, {
       ...config,
-      injectionRate: (config.injectionRate || 0.1) / crfTypes.length,
+      injectionRate: baseInjectionRate / crfTypes.length,
     });
     currentTraces = result.mutatedTrace;
     allInjectionPoints.push(...result.injectionPoints);
