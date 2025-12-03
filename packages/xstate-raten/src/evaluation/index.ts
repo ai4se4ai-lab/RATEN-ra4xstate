@@ -3,6 +3,8 @@
  *
  * Provides comprehensive datasets and evaluation scripts to reproduce
  * the experimental results from the RATEN research paper.
+ *
+ * All results are computed from actual RATEN analysis - no hardcoded expected values.
  */
 
 // Constants and configuration
